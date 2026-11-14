@@ -169,7 +169,7 @@ export function SettingsPage({ onboarding = false }: { onboarding?: boolean }) {
             <div>
               <strong>Public profile</strong>
               <p>
-                Let anyone view your profile, selected projects, and analytics.
+                Let anyone view your profile, featured projects, and analytics.
               </p>
             </div>
             <button
@@ -258,8 +258,8 @@ export function SettingsPage({ onboarding = false }: { onboarding?: boolean }) {
                       checked={removeData}
                       onChange={(e) => setRemoveData(e.target.checked)}
                     />{" "}
-                    Also delete imported projects and their analytics when
-                    disconnecting.
+                    Also delete synchronized repositories and their analytics
+                    when disconnecting.
                   </label>
                   <button
                     className="button secondary"

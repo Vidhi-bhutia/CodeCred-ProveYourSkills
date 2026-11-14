@@ -21,35 +21,39 @@ import {
   Avatar,
   RequireLogin,
   PageHeading,
-  ImportButton,
+  FeatureButton,
   LanguageChart,
   Methodology,
 } from "../components/ui";
 import { RepoCard } from "../components/RepoCard";
+import { AnalyticsProgress } from "../components/AnalyticsProgress";
+import { ContributionActivity } from "../components/ContributionActivity";
+import { useAnalytics } from "../useAnalytics";
+import { RefreshCw } from "lucide-react";
 import { DeveloperCard, type Developer } from "./Discover";
 export function Dashboard() {
   const { user, version, notify, importRepos } = useApp();
-  const [stats, setStats] = useState<Stats | null>(null),
-    [repos, setRepos] = useState<Repo[]>([]),
-    [developers, setDevelopers] = useState<Developer[]>([]),
-    [error, setError] = useState("");
+  const {
+    stats,
+    repositories: allRepos,
+    error,
+    refreshing,
+    refreshGitHub,
+  } = useAnalytics();
+  const repos = allRepos.filter((repo) => repo.featured);
+  const [developers, setDevelopers] = useState<Developer[]>([]);
   useEffect(() => {
     if (user)
-      Promise.all([
-        api<Stats>("/analytics"),
-        api<Repo[]>("/repositories"),
-        api<Developer[]>("/discover"),
-      ])
-        .then(([s, r, d]) => {
-          setStats(s);
-          setRepos(r);
+      api<Developer[]>("/discover")
+        .then((data) =>
           setDevelopers(
-            d.filter((item) => item.match && item.match.score > 0).slice(0, 2),
-          );
-          setError("");
-        })
-        .catch((e) => setError(e.message));
-  }, [user, version]);
+            data
+              .filter((item) => item.match && item.match.score > 0)
+              .slice(0, 2),
+          ),
+        )
+        .catch(() => {});
+  }, [user?.id, version, stats?.analyzedCount]);
   if (!user) return <RequireLogin />;
   return (
     <>
@@ -57,9 +61,24 @@ export function Dashboard() {
         eyebrow="YOUR DEVELOPER WORKSPACE"
         title={`Looking good, ${user.displayName.split(" ")[0]}.`}
         text="Your work, your skills, your story. All in one place."
-        action={<ImportButton />}
+        action={
+          <button
+            className="button primary"
+            disabled={
+              refreshing ||
+              ["queued", "running", "waiting"].includes(
+                stats?.sync?.state || "",
+              )
+            }
+            onClick={refreshGitHub}
+          >
+            <RefreshCw size={17} className={refreshing ? "spin" : ""} />
+            {refreshing ? "Queuing?" : "Refresh GitHub Analytics"}
+          </button>
+        }
       />
       {error && <div className="error">{error}</div>}
+      <AnalyticsProgress stats={stats} />
       <section className="welcome-banner">
         <div>
           <span className="pill light">
@@ -68,14 +87,14 @@ export function Dashboard() {
           <h2>Good code deserves a great identity.</h2>
           <p>
             {repos.length
-              ? "Keep building your proof. Every selected project adds context to your story."
+              ? "Keep building your proof. All eligible public repositories contribute to your technology profile."
               : "Bring your best work into the spotlight. Start with a project you’re proud of."}
           </p>
           <button
             className="text-link"
             onClick={() =>
               notify(
-                "Choose repositories with meaningful implementation. Only selected, successfully analyzed projects contribute to your skill proof.",
+                "All eligible public repositories contribute to analytics automatically. Featuring a repository only changes what appears on your profile.",
               )
             }
           >
@@ -95,9 +114,9 @@ export function Dashboard() {
         {[
           {
             icon: FolderGit2,
-            label: "Selected projects",
-            value: stats ? String(stats.importedCount) : "—",
-            detail: "Curated by you",
+            label: "Eligible repositories",
+            value: stats ? String(stats.repositoryCount) : "—",
+            detail: "Discovered automatically",
           },
           {
             icon: Code2,
@@ -133,7 +152,7 @@ export function Dashboard() {
           <div className="card-heading">
             <div>
               <h2>Your technology fingerprint</h2>
-              <p>The languages behind your selected work.</p>
+              <p>The languages across your public GitHub account.</p>
             </div>
             <span className="icon-label">
               <ChartNoAxesCombined size={18} />
@@ -164,7 +183,7 @@ export function Dashboard() {
             { done: user.onboarded, text: "Add your story", link: "/settings" },
             {
               done: repos.length > 0,
-              text: "Select your first project",
+              text: "Feature a favorite project",
               link: "/repositories",
             },
             {
@@ -193,16 +212,18 @@ export function Dashboard() {
           </Link>
         </section>
       </div>
+      <ContributionActivity stats={stats} />
       <section className="projects-section">
         <div className="section-heading">
           <div>
             <h2>
-              Selected projects <span className="count">{repos.length}</span>
+              Featured repositories{" "}
+              <span className="count">{repos.length}</span>
             </h2>
             <p>A curated collection. A clearer picture of you.</p>
           </div>
           <Link className="text-link" to="/repositories">
-            All projects <ArrowRight size={16} />
+            Manage showcase <ArrowRight size={16} />
           </Link>
         </div>
         {repos.length ? (
@@ -219,12 +240,12 @@ export function Dashboard() {
             <div>
               <h3>Your best work belongs here.</h3>
               <p>
-                Choose a public GitHub repository to start building your skill
-                proof.
+                Choose repositories to showcase. Your account analytics already
+                include every eligible public repository.
               </p>
             </div>
             <button className="button secondary" onClick={importRepos}>
-              <Plus size={16} /> Choose a project
+              <Plus size={16} /> Add Featured Repository
             </button>
           </div>
         )}

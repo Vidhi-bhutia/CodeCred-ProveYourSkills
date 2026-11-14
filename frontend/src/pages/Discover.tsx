@@ -181,7 +181,7 @@ export function DeveloperCard({ developer: d }: { developer: Developer }) {
       </div>
       <small>
         {format(d.analytics.totalLoc)} repository lines ·{" "}
-        {d.analytics.importedCount} selected projects
+        {d.analytics.repositoryCount} eligible repositories
       </small>
       {d.match && (
         <div className="match-explanation">

@@ -28,7 +28,7 @@ export function Shell() {
       icon: Code2,
       label: "My profile",
     },
-    { to: "/repositories", icon: FolderGit2, label: "Selected projects" },
+    { to: "/repositories", icon: FolderGit2, label: "Repositories" },
     { to: "/discover", icon: Compass, label: "Discover developers" },
   ];
   return (
@@ -110,7 +110,7 @@ export function Shell() {
                 {location.pathname === "/discover"
                   ? "Discover"
                   : location.pathname === "/repositories"
-                    ? "Selected projects"
+                    ? "Repositories"
                     : location.pathname === "/settings"
                       ? "Settings"
                       : location.pathname.startsWith("/u/")

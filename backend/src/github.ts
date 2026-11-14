@@ -37,11 +37,18 @@ export async function github<T = any>(path: string, token: string): Promise<T> {
   return (await githubPage<T>(path, token)).data;
 }
 export function linkPage(link: string | null, relation: string) {
-  const url = link?.split(',').find(part => part.includes(`rel="${relation}"`))?.match(/<([^>]+)>/)?.[1];
-  return url ? Number(new URL(url).searchParams.get('page')) || null : null;
+  const url = link
+    ?.split(",")
+    .find((part) => part.includes(`rel="${relation}"`))
+    ?.match(/<([^>]+)>/)?.[1];
+  return url ? Number(new URL(url).searchParams.get("page")) || null : null;
 }
-export async function githubPage<T = any>(path: string, token: string): Promise<{data:T;next:number|null;last:number|null}> {
-  if (!path.startsWith('/') || path.startsWith('//')) throw new Error('Invalid GitHub API path');
+export async function githubPage<T = any>(
+  path: string,
+  token: string,
+): Promise<{ data: T; next: number | null; last: number | null }> {
+  if (!path.startsWith("/") || path.startsWith("//"))
+    throw new Error("Invalid GitHub API path");
   const response = await fetch(`https://api.github.com${path}`, {
     headers: {
       Authorization: `Bearer ${token}`,
@@ -56,18 +63,33 @@ export async function githubPage<T = any>(path: string, token: string): Promise<
       401,
       "GitHub authorization expired. Reconnect GitHub in Settings.",
     );
-  if (response.status === 429 || (response.status === 403 && (response.headers.get('x-ratelimit-remaining') === '0' || response.headers.has('retry-after'))))
+  if (
+    response.status === 429 ||
+    (response.status === 403 &&
+      (response.headers.get("x-ratelimit-remaining") === "0" ||
+        response.headers.has("retry-after")))
+  )
     throw new HttpError(
       429,
       "GitHub request limit reached. Please try again later.",
-      new Date(Math.max(Date.now() + 60000, Number(response.headers.get('x-ratelimit-reset') || 0) * 1000, Date.now() + Number(response.headers.get('retry-after') || 0) * 1000)),
+      new Date(
+        Math.max(
+          Date.now() + 60000,
+          Number(response.headers.get("x-ratelimit-reset") || 0) * 1000,
+          Date.now() + Number(response.headers.get("retry-after") || 0) * 1000,
+        ),
+      ),
     );
   if (!response.ok)
     throw new HttpError(
       response.status === 404 ? 404 : response.status === 403 ? 403 : 502,
       `GitHub could not complete this request (${response.status}).`,
     );
-  return {data: response.status === 204 ? [] as T : await response.json() as T, next:linkPage(response.headers.get('link'),'next'), last:linkPage(response.headers.get('link'),'last')};
+  return {
+    data: response.status === 204 ? ([] as T) : ((await response.json()) as T),
+    next: linkPage(response.headers.get("link"), "next"),
+    last: linkPage(response.headers.get("link"), "last"),
+  };
 }
 export function metadata(repo: any) {
   return {
@@ -85,7 +107,11 @@ export function metadata(repo: any) {
     pushedAtGithub: repo.pushed_at,
   };
 }
-export async function analyze(repo: any, token: string, checkpoint: () => Promise<void> = async () => {}) {
+export async function analyze(
+  repo: any,
+  token: string,
+  checkpoint: () => Promise<void> = async () => {},
+) {
   if (!repo.size)
     return {
       loc: 0,

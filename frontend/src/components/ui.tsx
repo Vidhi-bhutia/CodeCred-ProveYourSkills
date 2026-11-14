@@ -70,12 +70,13 @@ export function RequireLogin() {
       </div>
       <h2>Your developer story starts here.</h2>
       <p>
-        Connect GitHub to choose your projects and build your evidence-backed
-        profile.
+        Connect GitHub to automatically analyze your public repositories and
+        build your evidence-backed profile.
       </p>
       <Login />
       <p className="caption">
-        Only public repository access. Nothing is imported automatically.
+        Public repository analytics run automatically. Featuring projects is
+        optional.
       </p>
     </div>
   );
@@ -127,11 +128,11 @@ export function Empty({
   );
 }
 
-export function ImportButton() {
+export function FeatureButton() {
   const { importRepos } = useApp();
   return (
     <button className="button primary" onClick={importRepos}>
-      <Plus size={17} /> Import repository
+      <Plus size={17} /> Add Featured Repository
     </button>
   );
 }
@@ -142,14 +143,14 @@ export function LanguageChart({ stats }: { stats: Stats | null }) {
       <Empty
         icon={ChartNoAxesCombined}
         title="Your fingerprint is waiting."
-        text="Import a repository to see your real language distribution. No estimates, no invented numbers."
+        text="Your public repositories are analyzed automatically. Your language distribution appears as source analysis completes."
       />
     );
   return (
     <div className="language-chart">
       <div className="chart-head">
         <div>
-          <span className="tiny-label">SELECTED CODEBASE SIZE</span>
+          <span className="tiny-label">ACCOUNT CODEBASE SIZE</span>
           <strong>
             {format(stats.totalLoc)} <small>lines</small>
           </strong>
@@ -199,7 +200,7 @@ export function Methodology() {
       <div>
         <p>
           We count physical, non-blank source lines (including comments) in
-          supported source files from your selected public repositories at a
+          supported source files from all eligible public repositories at a
           specific commit. Common dependency, build, generated, binary, minified
           and lock files are excluded using path and content heuristics.
           Heuristics cannot identify every generated or vendored file. Language

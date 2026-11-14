@@ -1,6 +1,6 @@
 export const API =
-  (import.meta as unknown as { env: Record<string, string> }).env
-    .VITE_API_URL || "/api";
+  (import.meta as unknown as { env?: Record<string, string> }).env
+    ?.VITE_API_URL || "/api";
 export async function api<T = any>(
   path: string,
   options: RequestInit = {},
@@ -58,6 +58,9 @@ export type Repo = {
   stars: number;
   forks: number;
   pinned: boolean;
+  featured: boolean;
+  featuredOrder: number;
+  eligible: boolean;
   status: string;
   error?: string;
   loc: number | null;
@@ -72,7 +75,38 @@ export type Stats = {
   languages: { name: string; loc: number; percentage: number }[];
   tags: string[];
   importedCount: number;
+  repositoryCount: number;
+  featuredCount: number;
+  skippedCount: number;
+  commits: number | null;
+  pullRequests: number | null;
+  mergedPullRequests: number | null;
+  issues: number | null;
+  closedIssues: number | null;
+  collaborativeRepositories: number;
+  externalContributionRepositories: number;
+  activityCoverage: Record<string, number>;
+  dailyCommits: Record<string, number>;
+  sync?: SyncStatus;
   analyzedCount: number;
   lastSync: string | null;
   badges: { name: string; reason: string }[];
+};
+export type SyncStatus = {
+  state: string;
+  phase?: string;
+  discovered: number;
+  analyzed: number;
+  skipped: number;
+  pending: number;
+  error?: string;
+  retryAt?: string;
+  completedAt?: string;
+  repositories: {
+    _id: string;
+    name: string;
+    fullName: string;
+    status: string;
+    error: string;
+  }[];
 };

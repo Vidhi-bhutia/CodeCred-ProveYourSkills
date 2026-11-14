@@ -72,26 +72,34 @@ const repositorySchema = new Schema(
 );
 repositorySchema.index({ owner: 1, githubId: 1 }, { unique: true });
 export const Repository = mongoose.model("Repository", repositorySchema);
-const syncJobSchema = new Schema({
-  owner: { type: Schema.Types.ObjectId, required: true, unique: true, ref: 'User' },
-  state: { type: String, default: 'queued' },
-  phase: { type: String, default: 'discovering' },
-  run: { type: String, required: true },
-  page: { type: Number, default: 1 },
-  discovered: { type: Number, default: 0 },
-  analyzed: { type: Number, default: 0 },
-  skipped: { type: Number, default: 0 },
-  processed: { type: Number, default: 0 },
-  lease: String,
-  leaseUntil: Date,
-  retryAt: Date,
-  attempts: { type: Number, default: 0 },
-  error: String,
-  startedAt: Date,
-  completedAt: Date,
-}, { timestamps: true });
+const syncJobSchema = new Schema(
+  {
+    owner: {
+      type: Schema.Types.ObjectId,
+      required: true,
+      unique: true,
+      ref: "User",
+    },
+    state: { type: String, default: "queued" },
+    phase: { type: String, default: "discovering" },
+    run: { type: String, required: true },
+    page: { type: Number, default: 1 },
+    discovered: { type: Number, default: 0 },
+    analyzed: { type: Number, default: 0 },
+    skipped: { type: Number, default: 0 },
+    processed: { type: Number, default: 0 },
+    lease: String,
+    leaseUntil: Date,
+    retryAt: Date,
+    attempts: { type: Number, default: 0 },
+    error: String,
+    startedAt: Date,
+    completedAt: Date,
+  },
+  { timestamps: true },
+);
 syncJobSchema.index({ state: 1, retryAt: 1, leaseUntil: 1 });
-export const SyncJob = mongoose.model('SyncJob', syncJobSchema);
+export const SyncJob = mongoose.model("SyncJob", syncJobSchema);
 const edgeSchema = new Schema(
   {
     from: { type: Schema.Types.ObjectId, required: true },

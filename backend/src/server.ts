@@ -1,7 +1,7 @@
 import mongoose from "mongoose";
 import { app } from "./app.js";
 import { config, configured } from "./config.js";
-import { Repository } from "./models.js";
+import { startSyncWorker } from "./sync.js";
 async function start() {
   if (config.production && !configured())
     throw new Error(
@@ -9,18 +9,6 @@ async function start() {
     );
   if (configured()) {
     await mongoose.connect(config.mongo, { serverSelectionTimeoutMS: 10000 });
-    await Repository.updateMany(
-      { status: "analyzing" },
-      {
-        $set: {
-          status: "error",
-          error: "Analysis was interrupted. Refresh to try again.",
-          loc: null,
-          languages: {},
-          tags: [],
-        },
-      },
-    );
   } else
     console.warn(
       "Configuration missing. Serving health and setup errors; authentication is disabled. See README.md.",
@@ -28,8 +16,10 @@ async function start() {
   const server = app.listen(config.port, () =>
     console.log(`CodeCred API listening on http://localhost:${config.port}`),
   );
+  const stopWorker = configured() ? startSyncWorker() : () => {};
   process.on("SIGTERM", () =>
     server.close(() => {
+      stopWorker();
       void mongoose.disconnect();
     }),
   );

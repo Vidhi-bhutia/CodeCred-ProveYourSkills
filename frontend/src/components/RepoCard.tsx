@@ -31,8 +31,8 @@ export function RepoCard({
       changed();
       notify(
         method === "DELETE"
-          ? "Project removed. Analytics will reflect this change."
-          : "Project updated.",
+          ? "Removed from Featured. Account analytics are unchanged."
+          : "Showcase updated. Account analytics are unchanged.",
       );
     } catch (e) {
       notify((e as Error).message);
@@ -50,7 +50,7 @@ export function RepoCard({
           {repo.name}
           <ArrowUpRight size={15} />
         </a>
-        {repo.pinned && <Pin size={14} />}
+        {repo.featured && <Pin size={14} />}
       </div>
       <p>{repo.description || "No repository description provided."}</p>
       <div className="tag-row">
@@ -98,7 +98,7 @@ export function RepoCard({
         )}
       <div className="repo-bottom">
         <span
-          className={`sync-status ${repo.status === "error" ? "failed" : ""}`}
+          className={`sync-status ${["error", "skipped"].includes(repo.status) ? "failed" : ""}`}
         >
           {repo.status === "ready" ? (
             <>
@@ -118,9 +118,11 @@ export function RepoCard({
           <div className="icon-actions">
             <button
               disabled={busy}
-              title={repo.pinned ? "Unpin project" : "Pin project"}
-              aria-label={repo.pinned ? "Unpin project" : "Pin project"}
-              onClick={() => action("", "PATCH", { pinned: !repo.pinned })}
+              title={repo.featured ? "Remove from Featured" : "Add to Featured"}
+              aria-label={
+                repo.featured ? "Remove from Featured" : "Add to Featured"
+              }
+              onClick={() => action("", "PATCH", { pinned: !repo.featured })}
             >
               <Pin size={14} />
             </button>
@@ -134,8 +136,8 @@ export function RepoCard({
             </button>
             <button
               disabled={busy}
-              title="Remove project"
-              aria-label="Remove project"
+              title="Remove from Featured"
+              aria-label="Remove from Featured"
               onClick={() => action("", "DELETE")}
             >
               <Trash2 size={14} />

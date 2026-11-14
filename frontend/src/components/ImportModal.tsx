@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 
 import { ArrowRight, FolderGit2, Search, RefreshCw, X } from "lucide-react";
 import { api, send, type Repo } from "../api";
@@ -16,51 +16,84 @@ export function ImportModal({ close }: { close: () => void }) {
     [loading, setLoading] = useState(true),
     [busy, setBusy] = useState(false),
     [error, setError] = useState("");
+  const modalRef = useRef<HTMLElement>(null);
+  const busyRef = useRef(false);
+  busyRef.current = busy;
   useEffect(() => {
+    const previousFocus = document.activeElement as HTMLElement | null;
     const prev = document.body.style.overflow;
     document.body.style.overflow = "hidden";
     const listener = (e: KeyboardEvent) => {
-      if (e.key === "Escape" && !busy) close();
+      if (e.key === "Escape" && !busyRef.current) close();
+      if (e.key === "Tab") {
+        const items = modalRef.current?.querySelectorAll<HTMLElement>(
+          "button:not(:disabled), input:not(:disabled), a[href]",
+        );
+        if (items?.length) {
+          const first = items[0],
+            last = items[items.length - 1];
+          if (e.shiftKey && document.activeElement === first) {
+            e.preventDefault();
+            last.focus();
+          } else if (!e.shiftKey && document.activeElement === last) {
+            e.preventDefault();
+            first.focus();
+          }
+        }
+      }
     };
     document.addEventListener("keydown", listener);
     return () => {
       document.body.style.overflow = prev;
       document.removeEventListener("keydown", listener);
+      previousFocus?.focus();
     };
-  }, [busy]);
+  }, []);
   useEffect(() => {
     if (!user) {
       setLoading(false);
       return;
     }
+    let alive = true;
     setLoading(true);
-    Promise.all([
-      api(`/github/repositories?page=${page}`),
-      api<Repo[]>("/repositories"),
-    ])
-      .then(([data, imported]) => {
-        setRepos((prev) =>
-          page === 1 ? data.repositories : [...prev, ...data.repositories],
-        );
-        setMore(data.hasMore);
-        setExisting(imported.map((r) => r.githubId));
-      })
-      .catch((e) => setError(e.message))
-      .finally(() => setLoading(false));
-  }, [page, user]);
+    const timer = setTimeout(
+      () =>
+        Promise.all([
+          api(
+            `/github/repositories?${new URLSearchParams({ page: String(page), q })}`,
+          ),
+          api<Repo[]>("/featured"),
+        ])
+          .then(([data, featured]) => {
+            if (!alive) return;
+            setRepos((prev) =>
+              page === 1 ? data.repositories : [...prev, ...data.repositories],
+            );
+            setMore(data.hasMore);
+            setExisting(featured.map((r) => r.githubId));
+            setError("");
+          })
+          .catch((e) => {
+            if (alive) setError(e.message);
+          })
+          .finally(() => {
+            if (alive) setLoading(false);
+          }),
+      250,
+    );
+    return () => {
+      alive = false;
+      clearTimeout(timer);
+    };
+  }, [page, user?.id, q]);
   async function submit() {
     setBusy(true);
     setError("");
     try {
-      const result = await api<Repo[]>(
-        "/repositories/import",
-        send("POST", { ids: selected }),
-      );
+      await api<Repo[]>("/featured", send("POST", { ids: selected }));
       changed();
       notify(
-        result.some((r) => r.status === "error")
-          ? "Import saved. Some projects could not be analyzed; review their status."
-          : "Your selected projects are imported and analyzed.",
+        "Featured repositories updated. Your account analytics are unchanged.",
       );
       close();
     } catch (e) {
@@ -73,10 +106,11 @@ export function ImportModal({ close }: { close: () => void }) {
   return (
     <div className="modal-backdrop">
       <section
+        ref={modalRef}
         className="modal"
         role="dialog"
         aria-modal="true"
-        aria-labelledby="import-title"
+        aria-labelledby="featured-title"
       >
         <div className="modal-header">
           <div className="empty-icon">
@@ -85,17 +119,18 @@ export function ImportModal({ close }: { close: () => void }) {
           <button
             autoFocus
             className="icon-button"
-            aria-label="Close import"
+            aria-label="Close featured repository selection"
             disabled={busy}
             onClick={close}
           >
             <X size={21} />
           </button>
         </div>
-        <h2 id="import-title">Choose the work that speaks for you.</h2>
+        <h2 id="featured-title">Choose the work that speaks for you.</h2>
         <p>
-          Select up to 3 public repositories at a time. Only your choices
-          contribute to your CodeCred profile.
+          Choose one or more repositories for your profile showcase. Analytics
+          already include all eligible public repositories, whether featured or
+          not.
         </p>
         {!user ? (
           <RequireLogin />
@@ -104,10 +139,13 @@ export function ImportModal({ close }: { close: () => void }) {
             <div className="search-input">
               <Search size={17} />
               <input
-                aria-label="Search loaded GitHub repositories"
+                aria-label="Search all discovered GitHub repositories"
                 placeholder="Search loaded repositories…"
                 value={q}
-                onChange={(e) => setQ(e.target.value)}
+                onChange={(e) => {
+                  setQ(e.target.value);
+                  setPage(1);
+                }}
                 disabled={busy}
               />
             </div>
@@ -133,12 +171,7 @@ export function ImportModal({ close }: { close: () => void }) {
                       <input
                         type="checkbox"
                         checked={imported || selected.includes(r.githubId)}
-                        disabled={
-                          imported ||
-                          busy ||
-                          (!selected.includes(r.githubId) &&
-                            selected.length >= 3)
-                        }
+                        disabled={imported || busy}
                         onChange={(e) =>
                           setSelected((prev) =>
                             e.target.checked
@@ -150,7 +183,7 @@ export function ImportModal({ close }: { close: () => void }) {
                       <div>
                         <strong>
                           {r.name}
-                          {imported && <span className="pill">IMPORTED</span>}
+                          {imported && <span className="pill">FEATURED</span>}
                         </strong>
                         <p>{r.description || "No description provided."}</p>
                         <span>
@@ -166,8 +199,8 @@ export function ImportModal({ close }: { close: () => void }) {
               )}
               {!loading && !repos.length && !error && (
                 <Empty
-                  title="No public repositories found."
-                  text="Public projects you own or collaborate on will appear here."
+                  title="No matching repositories yet."
+                  text="Repositories appear here as automatic account discovery progresses. Try another search or check sync progress on your dashboard."
                 />
               )}
               {more && (
@@ -188,7 +221,7 @@ export function ImportModal({ close }: { close: () => void }) {
                     files. This may take a few minutes…
                   </>
                 ) : (
-                  `${selected.length} of 3 selected`
+                  `${selected.length} selected`
                 )}
               </span>
               <button

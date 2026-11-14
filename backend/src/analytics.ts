@@ -39,6 +39,9 @@ export function countLines(source: string) {
   return source.split(/\r?\n/).filter((line) => line.trim().length > 0).length;
 }
 export type EvidenceRepo = {
+  eligible?: boolean | null;
+  featured?: boolean | null;
+  activity?: Record<string, any> | null;
   status?: string | null;
   loc?: number | null;
   languages?: Map<string, number> | Record<string, number> | null;
@@ -46,6 +49,7 @@ export type EvidenceRepo = {
   syncedAt?: Date | null;
 };
 export function aggregate(repos: EvidenceRepo[]) {
+  repos = repos.filter((repo) => repo.eligible !== false);
   const languages: Record<string, number> = {};
   const tags = new Set<string>();
   for (const repo of repos.filter((r) => r.status === "ready")) {
@@ -56,6 +60,34 @@ export function aggregate(repos: EvidenceRepo[]) {
     repo.tags?.forEach((t) => tags.add(t));
   }
   const totalLoc = Object.values(languages).reduce((a, b) => a + b, 0);
+  const activityMetrics = [
+    "commits",
+    "pullRequests",
+    "mergedPullRequests",
+    "issues",
+    "closedIssues",
+    "contributors",
+  ] as const;
+  const activity: Record<string, number | null> = {};
+  const coverage: Record<string, number> = {};
+  for (const metric of activityMetrics) {
+    const verified = repos.filter(
+      (repo) => typeof repo.activity?.[metric] === "number",
+    );
+    coverage[metric] = verified.length;
+    activity[metric] = verified.length
+      ? verified.reduce((total, repo) => total + repo.activity![metric], 0)
+      : null;
+  }
+  const dailyCommits: Record<string, number> = {};
+  coverage.dailyCommits = repos.filter(
+    (repo) => repo.activity?.dailyCommits != null,
+  ).length;
+  for (const repo of repos)
+    for (const [day, count] of Object.entries(
+      repo.activity?.dailyCommits || {},
+    ))
+      dailyCommits[day] = (dailyCommits[day] || 0) + Number(count);
   return {
     totalLoc,
     languages: Object.entries(languages)
@@ -67,12 +99,27 @@ export function aggregate(repos: EvidenceRepo[]) {
       })),
     tags: [...tags],
     importedCount: repos.length,
+    repositoryCount: repos.length,
+    featuredCount: repos.filter((repo) => repo.featured).length,
+    pendingCount: repos.filter((repo) =>
+      ["pending", "analyzing"].includes(repo.status || ""),
+    ).length,
+    skippedCount: repos.filter((repo) =>
+      ["skipped", "error"].includes(repo.status || ""),
+    ).length,
     analyzedCount: repos.filter((r) => r.status === "ready").length,
     personalAdditions: null,
     personalDeletions: null,
-    commits: null,
-    pullRequests: null,
-    issues: null,
+    ...activity,
+    activityCoverage: coverage,
+    dailyCommits,
+    activityDays: 90,
+    collaborativeRepositories: repos.filter(
+      (repo) => (repo.activity?.contributors || 0) > 1,
+    ).length,
+    externalContributionRepositories: repos.filter(
+      (repo) => repo.activity?.external && (repo.activity?.commits || 0) > 0,
+    ).length,
     lastSync:
       repos
         .map((r) => r.syncedAt)
@@ -85,18 +132,18 @@ export function badges(stats: ReturnType<typeof aggregate>) {
   if (stats.analyzedCount)
     result.push({
       name: "First proof",
-      reason: "Imported and analyzed your first selected repository.",
+      reason: "Your first public repository was successfully analyzed.",
     });
   if (stats.languages.filter((l) => l.loc >= 100).length >= 3)
     result.push({
       name: "Polyglot",
       reason:
-        "At least 100 source lines in each of three languages across selected repositories.",
+        "At least 100 source lines in each of three languages across eligible public repositories.",
     });
   if (stats.analyzedCount >= 5)
     result.push({
       name: "Project builder",
-      reason: "Five selected repositories successfully analyzed.",
+      reason: "Five public repositories successfully analyzed.",
     });
   return result;
 }

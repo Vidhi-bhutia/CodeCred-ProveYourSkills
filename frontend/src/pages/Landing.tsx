@@ -162,13 +162,13 @@ export function Landing() {
               {
                 icon: FolderGit2,
                 title: "Choose your best work.",
-                text: "Import only the public repositories you want to showcase. A curated identity, built by you.",
+                text: "Your public repositories are analyzed automatically. Choose favorites for your profile showcase.",
                 n: "01",
               },
               {
                 icon: ChartNoAxesCombined,
                 title: "Let the evidence talk.",
-                text: "Turn selected projects into transparent language insights, source-line statistics, and supported skills.",
+                text: "Turn featured projects into transparent language insights, source-line statistics, and supported skills.",
                 n: "02",
               },
               {

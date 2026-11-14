@@ -1,3 +1,5 @@
+import { repositoryRoutes } from "./repository-routes.js";
+import { enqueueSync, migrateRepositories } from "./sync.js";
 import express from "express";
 import session from "express-session";
 import MongoStore from "connect-mongo";
@@ -8,7 +10,7 @@ import mongoose from "mongoose";
 import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import { z } from "zod";
 import { config, configured } from "./config.js";
-import { User, Repository, Edge, ProfileView } from "./models.js";
+import { User, Repository, Edge, ProfileView, SyncJob } from "./models.js";
 import { aggregate, badges, similarity } from "./analytics.js";
 import {
   HttpError,
@@ -205,6 +207,11 @@ app.get("/api/auth/github/callback", async (req, res) => {
     await new Promise<void>((resolve, reject) =>
       req.session.save((e) => (e ? reject(e) : resolve())),
     );
+    await enqueueSync(user._id, true).catch(() =>
+      console.warn(
+        "Analytics refresh could not be queued; retry from the dashboard.",
+      ),
+    );
     res.redirect(
       `${config.frontend}/${user.onboarded ? "dashboard" : "onboarding"}`,
     );
@@ -214,6 +221,7 @@ app.get("/api/auth/github/callback", async (req, res) => {
 });
 app.get("/api/me", async (req, res) => {
   const user = await current(req);
+  if (user.connected) await enqueueSync(user._id);
   res.json(publicUser(user));
 });
 app.post("/api/auth/logout", async (req, res) => {
@@ -261,11 +269,10 @@ app.patch("/api/me", async (req, res) => {
 app.post("/api/me/disconnect", async (req, res) => {
   const user = await current(req);
   const { deleteData } = z.object({ deleteData: z.boolean() }).parse(req.body);
-  if (active.has(String(user._id)))
-    throw new HttpError(
-      409,
-      "Wait for the active repository analysis to finish.",
-    );
+  await SyncJob.updateOne(
+    { owner: user._id },
+    { $set: { state: "cancelled", leaseUntil: new Date(0) } },
+  );
   user.connected = false;
   user.token = undefined;
   await user.save();
@@ -274,12 +281,8 @@ app.post("/api/me/disconnect", async (req, res) => {
 });
 app.delete("/api/me", async (req, res) => {
   const user = await current(req);
-  if (active.has(String(user._id)))
-    throw new HttpError(
-      409,
-      "Wait for the active repository analysis to finish.",
-    );
   await Promise.all([
+    SyncJob.deleteOne({ owner: user._id }),
     Repository.deleteMany({ owner: user._id }),
     Edge.deleteMany({ $or: [{ from: user._id }, { to: user._id }] }),
     ProfileView.deleteMany({ target: user._id }),
@@ -290,169 +293,7 @@ app.delete("/api/me", async (req, res) => {
     res.json({ ok: true });
   });
 });
-app.get("/api/github/repositories", async (req, res) => {
-  const user = await current(req),
-    token = await tokenFor(user);
-  const page = z.coerce
-    .number()
-    .int()
-    .min(1)
-    .max(100)
-    .default(1)
-    .parse(req.query.page);
-  try {
-    const repos = await github(
-      `/user/repos?visibility=public&affiliation=owner,collaborator,organization_member&sort=updated&per_page=30&page=${page}`,
-      token,
-    );
-    res.json({
-      repositories: repos.filter((r: any) => !r.private).map(metadata),
-      hasMore: repos.length === 30,
-    });
-  } catch (e) {
-    if (e instanceof HttpError && e.status === 401) {
-      user.connected = false;
-      await user.save();
-    }
-    throw e;
-  }
-});
-const active = new Set<string>();
-async function syncRepo(
-  record: any,
-  user: Awaited<ReturnType<typeof current>>,
-  token: string,
-) {
-  record.status = "analyzing";
-  record.error = undefined;
-  await record.save();
-  try {
-    const repo = await github(`/repositories/${record.githubId}`, token);
-    if (repo.private || repo.visibility !== "public")
-      throw new HttpError(422, "Only public repositories are supported.");
-    Object.assign(record, metadata(repo), await analyze(repo, token), {
-      status: "ready",
-      syncedAt: new Date(),
-    });
-  } catch (error) {
-    record.status = "error";
-    record.loc = null;
-    record.languages = new Map();
-    record.tags = [];
-    record.error = error instanceof Error ? error.message : "Analysis failed.";
-    if (error instanceof HttpError && error.status === 401) {
-      user.connected = false;
-      await user.save();
-    }
-  }
-  await record.save();
-  return record;
-}
-app.post("/api/repositories/import", async (req, res) => {
-  const user = await current(req),
-    key = String(user._id),
-    token = await tokenFor(user);
-  const { ids } = z
-    .object({ ids: z.array(z.number().int().positive()).min(1).max(3) })
-    .parse(req.body);
-  if (active.has(key))
-    throw new HttpError(409, "An import is already running.");
-  active.add(key);
-  try {
-    if (
-      (await Repository.countDocuments({ owner: user._id })) +
-        new Set(ids).size >
-      20
-    )
-      throw new HttpError(422, "MVP limit: 20 selected repositories.");
-    const result = [];
-    for (const id of new Set(ids)) {
-      if (await Repository.exists({ owner: user._id, githubId: id })) continue;
-      const repo = await github(`/repositories/${id}`, token);
-      if (repo.private)
-        throw new HttpError(422, "Only public repositories are supported.");
-      // Verify actual access/association; the browser cannot import arbitrary repository IDs.
-      if (String(repo.owner.id) !== user.githubId) {
-        const permission = await github(
-          `/repos/${repo.full_name}/collaborators/${encodeURIComponent(user.githubLogin)}/permission`,
-          token,
-        );
-        if (!["admin", "write", "maintain"].includes(permission.permission))
-          throw new HttpError(
-            403,
-            "Select a repository you own or contribute to.",
-          );
-      }
-      const record = await Repository.create({
-        owner: user._id,
-        ...metadata(repo),
-      });
-      result.push(await syncRepo(record, user, token));
-    }
-    res.json(result);
-  } finally {
-    active.delete(key);
-  }
-});
-app.get("/api/repositories", async (req, res) => {
-  const user = await current(req);
-  res.json(
-    await Repository.find({ owner: user._id }).sort({
-      pinned: -1,
-      createdAt: -1,
-    }),
-  );
-});
-app.patch("/api/repositories/:id", async (req, res) => {
-  const user = await current(req);
-  const { pinned } = z.object({ pinned: z.boolean() }).parse(req.body);
-  const record = await Repository.findOneAndUpdate(
-    { _id: req.params.id, owner: user._id },
-    { $set: { pinned } },
-    { new: true },
-  );
-  if (!record) throw new HttpError(404, "Repository not found.");
-  res.json(record);
-});
-app.delete("/api/repositories/:id", async (req, res) => {
-  const user = await current(req);
-  if (active.has(String(user._id)))
-    throw new HttpError(409, "Wait for the active analysis to finish.");
-  const result = await Repository.deleteOne({
-    _id: req.params.id,
-    owner: user._id,
-  });
-  if (!result.deletedCount) throw new HttpError(404, "Repository not found.");
-  res.json({ ok: true });
-});
-app.post("/api/repositories/:id/refresh", async (req, res) => {
-  const user = await current(req),
-    key = String(user._id),
-    token = await tokenFor(user);
-  if (active.has(key))
-    throw new HttpError(409, "An analysis is already running.");
-  const record = await Repository.findOne({
-    _id: req.params.id,
-    owner: user._id,
-  });
-  if (!record) throw new HttpError(404, "Repository not found.");
-  if (record.syncedAt && Date.now() - record.syncedAt.getTime() < 300000)
-    throw new HttpError(
-      429,
-      "Statistics were recently synchronized. Try again in five minutes.",
-    );
-  active.add(key);
-  try {
-    res.json(await syncRepo(record, user, token));
-  } finally {
-    active.delete(key);
-  }
-});
-app.get("/api/analytics", async (req, res) => {
-  const user = await current(req);
-  const stats = aggregate(await Repository.find({ owner: user._id }));
-  res.json({ ...stats, badges: badges(stats) });
-});
+app.use("/api", repositoryRoutes);
 async function visibleProfile(username: string, viewer?: string) {
   const user = await User.findOne({ username });
   if (!user || (user.visibility !== "public" && String(user._id) !== viewer))
@@ -464,10 +305,11 @@ app.get("/api/profiles/:username", async (req, res) => {
     String(req.params.username),
     req.session.userId,
   );
-  const repos = await Repository.find({ owner: user._id }).sort({
-    pinned: -1,
-    createdAt: -1,
-  });
+  await migrateRepositories(user._id);
+  const repos = await Repository.find({
+    owner: user._id,
+    eligible: { $ne: false },
+  }).sort({ featuredOrder: 1, name: 1 });
   const stats = aggregate(repos);
   const [followers, following, kudos, isFollowing, hasKudos] =
     await Promise.all([
@@ -487,7 +329,7 @@ app.get("/api/profiles/:username", async (req, res) => {
     ]);
   res.json({
     user: publicUser(user),
-    repositories: repos,
+    repositories: repos.filter((repo) => repo.featured),
     analytics: { ...stats, badges: badges(stats) },
     followers,
     following,

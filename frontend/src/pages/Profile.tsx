@@ -1,3 +1,4 @@
+import { ContributionActivity } from "../components/ContributionActivity";
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import {
@@ -23,7 +24,7 @@ import { date } from "../shared";
 import {
   Avatar,
   Empty,
-  ImportButton,
+  FeatureButton,
   LanguageChart,
   Methodology,
 } from "../components/ui";
@@ -231,12 +232,26 @@ export function Profile() {
           )}
         </div>
       )}
+      <div className="tag-row profile-tags">
+        {stats.tags.map((tag) => (
+          <span
+            className="tag"
+            key={tag}
+            title="Supported by account repository analysis"
+          >
+            {tag}
+          </span>
+        ))}
+      </div>
       <div className="profile-evidence">
         <div className="card">
           <div className="card-heading">
             <div>
               <h2>Technology fingerprint</h2>
-              <p>Evidence from {stats.analyzedCount} analyzed projects.</p>
+              <p>
+                Evidence from {stats.analyzedCount} analyzed public
+                repositories.
+              </p>
             </div>
             <ShieldCheck size={20} />
           </div>
@@ -275,10 +290,10 @@ export function Profile() {
       </div>
       <div className="section-heading">
         <div>
-          <h2>Selected projects</h2>
-          <p>The work behind the profile.</p>
+          <h2>Featured Repositories</h2>
+          <p>A curated showcase, independent of account analytics.</p>
         </div>
-        {owner && <ImportButton />}
+        {owner && <FeatureButton />}
       </div>
       {data.repositories.length ? (
         <div className="repo-grid">
@@ -290,21 +305,12 @@ export function Profile() {
         <section className="card">
           <Empty
             title="The next great project starts somewhere."
-            text="No repositories have been selected for this profile yet."
+            text="No repositories are featured yet. Account analytics are still calculated from all eligible public repositories."
+            action={owner && <FeatureButton />}
           />
         </section>
       )}
-      <section className="contribution-note">
-        <ChartNoAxesCombined size={21} />
-        <div>
-          <strong>Personal contributions: unavailable</strong>
-          <p>
-            Verified commit additions, deletions, pull requests and contribution
-            history are not yet supported. Repository lines above describe the
-            codebase, not personal authorship.
-          </p>
-        </div>
-      </section>
+      <ContributionActivity stats={stats} />
       <Methodology />
     </>
   );

@@ -1,11 +1,4 @@
-export const colors = [
-  "#255d49",
-  "#7da88e",
-  "#a8c4a2",
-  "#d0b986",
-  "#99b1bf",
-  "#b6a0c2",
-];
+export const colors = ["#124b33","#176b45","#388754","#659e76","#8bb597","#b6d5bd"];
 
 export const format = (n: number) => n.toLocaleString();
 
